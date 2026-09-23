@@ -1,6 +1,7 @@
 package com.example.dnevnik
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -61,63 +62,35 @@ fun DiaryApp() {
     var lessons by remember { mutableStateOf(loadLessons(context)) }
     var showDialog by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf(todayKey()) }
-
     val dayLessons = lessons.filter { it.date == selectedDate }.sortedBy { it.id }
     val selectedMonth = selectedDate.substring(0, 7)
     val monthLessons = lessons.filter { it.date.startsWith(selectedMonth) }
 
     Scaffold(topBar = { TopAppBar(title = { Text("📚 Дневник") }) }) { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onHorizontalDrag = { _, _ -> },
-                        onDragEnd = { /* handled by accumulated drag below */ }
-                    )
-                }
-        ) {
-            // Полноценный свайп обрабатывается отдельным контейнером ниже.
+        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
             var dragDistance by remember { mutableFloatStateOf(0f) }
-            Box(
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .pointerInput(Unit) {
                         detectHorizontalDragGestures(
-                            onHorizontalDrag = { _, dragAmount ->
-                                dragDistance += dragAmount
-                            },
+                            onHorizontalDrag = { _, amount -> dragDistance += amount },
                             onDragEnd = {
-                                if (dragDistance > 80f) {
-                                    selectedDate = shiftDate(selectedDate, -1)
-                                } else if (dragDistance < -80f) {
-                                    selectedDate = shiftDate(selectedDate, 1)
-                                }
+                                if (dragDistance > 80f) selectedDate = shiftDate(selectedDate, -1)
+                                else if (dragDistance < -80f) selectedDate = shiftDate(selectedDate, 1)
                                 dragDistance = 0f
                             },
                             onDragCancel = { dragDistance = 0f }
                         )
                     }
             ) {
-                Column(Modifier.fillMaxWidth()) {
-                    Text(prettyDate(selectedDate), style = MaterialTheme.typography.headlineSmall)
-                    Text(
-                        "Записей за этот день: ${dayLessons.size}  •  За месяц: ${monthLessons.size}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text("← свайп влево/вправо → для смены дня", style = MaterialTheme.typography.bodySmall)
-                }
+                Text(prettyDate(selectedDate), style = MaterialTheme.typography.headlineSmall)
+                Text("Записей за этот день: ${dayLessons.size}  •  За месяц: ${monthLessons.size}")
+                Text("← свайп → для смены дня", style = MaterialTheme.typography.bodySmall)
             }
 
             Spacer(Modifier.height(12.dp))
-
-            LazyColumn(
-                Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(dayLessons, key = { it.id }) { item ->
                     LessonCard(item) {
                         lessons = lessons.filterNot { it.id == item.id }
@@ -125,25 +98,15 @@ fun DiaryApp() {
                     }
                 }
             }
-
             Spacer(Modifier.height(10.dp))
-            Button(onClick = { showDialog = true }, Modifier.fillMaxWidth()) {
-                Text("➕ Добавить урок")
-            }
+            Button(onClick = { showDialog = true }, Modifier.fillMaxWidth()) { Text("➕ Добавить урок") }
         }
     }
 
     if (showDialog) AddLessonDialog(
         onDismiss = { showDialog = false },
         onAdd = { subject, lesson, homework, photo ->
-            lessons = lessons + Lesson(
-                System.currentTimeMillis(),
-                selectedDate,
-                subject,
-                lesson,
-                homework,
-                photo
-            )
+            lessons = lessons + Lesson(System.currentTimeMillis(), selectedDate, subject, lesson, homework, photo)
             saveLessons(context, lessons)
             showDialog = false
         }
@@ -161,12 +124,7 @@ fun LessonCard(item: Lesson, onDelete: () -> Unit) {
             Text("ДЗ: ${item.homework}")
             item.photoUri?.let {
                 Spacer(Modifier.height(10.dp))
-                AsyncImage(
-                    Uri.parse(it),
-                    "Фото задания",
-                    Modifier.fillMaxWidth().height(180.dp),
-                    contentScale = ContentScale.Crop
-                )
+                AsyncImage(Uri.parse(it), "Фото задания", Modifier.fillMaxWidth().height(180.dp), contentScale = ContentScale.Crop)
             }
             Spacer(Modifier.height(10.dp))
             Button(onClick = onDelete) { Text("Удалить") }
@@ -176,12 +134,22 @@ fun LessonCard(item: Lesson, onDelete: () -> Unit) {
 
 @Composable
 fun AddLessonDialog(onDismiss: () -> Unit, onAdd: (String, String, String, String?) -> Unit) {
+    val context = LocalContext.current
     var subject by remember { mutableStateOf("") }
     var lesson by remember { mutableStateOf("") }
     var homework by remember { mutableStateOf("") }
     var photoUri by remember { mutableStateOf<String?>(null) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        photoUri = uri?.toString()
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: SecurityException) { }
+            photoUri = uri.toString()
+        }
     }
 
     AlertDialog(
@@ -195,24 +163,17 @@ fun AddLessonDialog(onDismiss: () -> Unit, onAdd: (String, String, String, Strin
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(homework, { homework = it }, label = { Text("ДЗ") })
                 Spacer(Modifier.height(10.dp))
-                Button(onClick = { picker.launch("image/*") }) {
+                Button(onClick = { picker.launch(arrayOf("image/*")) }) {
                     Text(if (photoUri == null) "📷 Добавить фото" else "📷 Фото выбрано")
                 }
                 photoUri?.let {
                     Spacer(Modifier.height(8.dp))
-                    AsyncImage(
-                        Uri.parse(it),
-                        null,
-                        Modifier.fillMaxWidth().height(120.dp),
-                        contentScale = ContentScale.Crop
-                    )
+                    AsyncImage(Uri.parse(it), null, Modifier.fillMaxWidth().height(120.dp), contentScale = ContentScale.Crop)
                 }
             }
         },
         confirmButton = {
-            Button(enabled = subject.isNotBlank(), onClick = { onAdd(subject, lesson, homework, photoUri) }) {
-                Text("Сохранить")
-            }
+            Button(enabled = subject.isNotBlank(), onClick = { onAdd(subject, lesson, homework, photoUri) }) { Text("Сохранить") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )
@@ -221,36 +182,18 @@ fun AddLessonDialog(onDismiss: () -> Unit, onAdd: (String, String, String, Strin
 private fun saveLessons(context: Context, lessons: List<Lesson>) {
     val array = JSONArray()
     lessons.forEach { array.put(JSONObject().apply {
-        put("id", it.id)
-        put("date", it.date)
-        put("subject", it.subject)
-        put("lesson", it.lesson)
-        put("homework", it.homework)
-        put("photoUri", it.photoUri ?: JSONObject.NULL)
+        put("id", it.id); put("date", it.date); put("subject", it.subject); put("lesson", it.lesson); put("homework", it.homework); put("photoUri", it.photoUri ?: JSONObject.NULL)
     }) }
-    context.getSharedPreferences("diary", Context.MODE_PRIVATE)
-        .edit()
-        .putString("lessons", array.toString())
-        .apply()
+    context.getSharedPreferences("diary", Context.MODE_PRIVATE).edit().putString("lessons", array.toString()).apply()
 }
 
 private fun loadLessons(context: Context): List<Lesson> {
-    val raw = context.getSharedPreferences("diary", Context.MODE_PRIVATE)
-        .getString("lessons", null) ?: return emptyList()
+    val raw = context.getSharedPreferences("diary", Context.MODE_PRIVATE).getString("lessons", null) ?: return emptyList()
     return try {
         val array = JSONArray(raw)
         List(array.length()) { i ->
             val o = array.getJSONObject(i)
-            Lesson(
-                o.getLong("id"),
-                o.getString("date"),
-                o.getString("subject"),
-                o.getString("lesson"),
-                o.getString("homework"),
-                if (o.isNull("photoUri")) null else o.getString("photoUri")
-            )
+            Lesson(o.getLong("id"), o.getString("date"), o.getString("subject"), o.getString("lesson"), o.getString("homework"), if (o.isNull("photoUri")) null else o.getString("photoUri"))
         }
-    } catch (_: Exception) {
-        emptyList()
-    }
+    } catch (_: Exception) { emptyList() }
 }
