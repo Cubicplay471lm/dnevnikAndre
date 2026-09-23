@@ -2,7 +2,8 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -11,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,10 +27,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: |
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
           accept-android-sdk-licenses: true
 
       - name: Set up Gradle
