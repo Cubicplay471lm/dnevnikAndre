@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.example.dnevnik"
     compileSdk = 35
+
     defaultConfig {
         applicationId = "com.example.dnevnik"
         minSdk = 24
@@ -14,6 +15,15 @@ android {
         versionCode = 2
         versionName = "2.0"
     }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {
